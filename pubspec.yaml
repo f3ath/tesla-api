@@ -1,0 +1,15 @@
+author: "Alexey Karapetov <karapetov@gmail.com>"
+description: "Tesla API client and proxy."
+homepage: "https://github.com/f3ath/tesla-api"
+name: "tesla"
+version: "0.0.1"
+executables:
+  cli: "cli.dart"
+dependencies:
+  args: "^1.5.0"
+  http: "^0.12.0"
+dev_dependencies:
+  test: "^1.3.0"
+  mockito: "^3.0.0"
+environment:
+  sdk: ">=2.0.0 <3.0.0"
