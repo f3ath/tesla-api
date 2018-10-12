@@ -11,18 +11,10 @@ class ConsoleMock extends Mock implements Console {}
 class ClientMock extends Mock implements TeslaClient {}
 
 void main() {
-  group('auth', () {
+  group('Console app', () {
     ConsoleMock console;
     ClientMock client;
     CommandRunner app;
-
-    const authResponse = {
-      "access_token": "abc123",
-      "token_type": "bearer",
-      "expires_in": 3888000,
-      "refresh_token": "cba321",
-      "created_at": 1538359034
-    };
 
     setUp(() {
       console = ConsoleMock();
@@ -30,10 +22,11 @@ void main() {
       app = App(console, client);
       when(client.auth(
               'user@example.com', 'ilovetesla', 'client_id', 'client_secret'))
-          .thenAnswer((_) => Future.value(AuthResponse.fromJson(authResponse)));
+          .thenAnswer((_) => Future.value(AuthResponse('abc123', 3888000,
+              'cba321', DateTime.parse('2018-09-30 18:57:14'))));
     });
 
-    test('calls the client and displays token', () async {
+    test('auth', () async {
       await app.run([
         'auth',
         '-e',
@@ -46,8 +39,12 @@ void main() {
         'client_secret'
       ]);
 
-      expect(verify(console.log(captureAny)).captured.single, 'abc123');
+      expect(verify(console.log(captureAny)).captured, [
+        'token: abc123',
+        'expires in: 3888000',
+        'refresh token: cba321',
+        'created at: 2018-09-30 18:57:14.000'
+      ]);
     });
   });
 }
-

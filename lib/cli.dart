@@ -47,7 +47,10 @@ class Auth extends Command {
     final id = argResults['client-id'];
     final secret = argResults['client-secret'];
     final auth = await _client.auth(email, password, id, secret);
-    _console.log(auth.accessToken);
+    _console.log('token: ${auth.accessToken}');
+    _console.log('expires in: ${auth.expiresIn}');
+    _console.log('refresh token: ${auth.refreshToken}');
+    _console.log('created at: ${auth.createdAt.toLocal()}');
   }
 }
 
