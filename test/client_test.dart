@@ -8,10 +8,11 @@ import 'package:test/test.dart';
 void main() {
   group('API Client', () {
     HttpServer server;
-    final client = TeslaClient(HttpClient(), host: 'http://localhost:8080');
+    TeslaClient client;
 
     setUp(() async {
       server = await HttpServer.bind('localhost', 8080);
+      client = TeslaClient(HttpClient(), host: 'http://localhost:8080');
     });
 
     tearDown(() async {
@@ -31,6 +32,8 @@ void main() {
             'email': 'tesla@example.com',
             'password': 'pass'
           },
+          headers: (HttpHeaders h) =>
+              h.value('User-Agent') == 'Dart Tesla API client',
         );
         r.response.write(json.encode({
           "access_token": "abc123",
@@ -82,6 +85,7 @@ void main() {
         r.response.close();
       });
 
+      client.token = 'abc123';
       final vehicles = await client.listVehicles();
       expect(vehicles.length, 1);
       expect(vehicles[0].id, 12345678901234567);

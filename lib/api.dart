@@ -2,30 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-enum Method { get, post }
-
-abstract class Request {
-  String get path;
-
-  Method get method;
-
-  Map<String, dynamic> get body;
-}
-
-class AuthRequest implements Request {
-  final method = Method.post;
-  final path = '/oauth/token';
-  final Map<String, dynamic> body;
-
-  AuthRequest(String email, String password, String id, String secret)
-      : body = {
-          'grant_type': 'password',
-          'client_id': id,
-          'client_secret': secret,
-          'email': email,
-          'password': password
-        };
-}
+import 'package:tesla/src/api/method.dart';
 
 class AuthResponse {
   final String accessToken;
@@ -47,10 +24,6 @@ class AuthResponse {
             isUtc: true);
 }
 
-class ListVehiclesRequest {
-  final String path = '/api/1/vehicles';
-}
-
 class Vehicle {
   final int id;
   final int vehicleId;
@@ -67,56 +40,66 @@ class Vehicle {
         displayName = j['display_name'];
 }
 
-class HttpClientException implements IOException {}
+class TeslaClientException implements IOException {
+  final HttpHeaders headers;
+  final int status;
+  final String body;
+
+  TeslaClientException(
+      int this.status, HttpHeaders this.headers, String this.body);
+}
+
+class InvalidTokenException implements IOException {}
 
 class TeslaClient {
-  final HttpClient _http;
-  final String _host;
-  final String _userAgent;
+  final HttpClient http;
+  final String host;
+  final String userAgent;
+  String token;
 
-  TeslaClient(HttpClient this._http,
-      {String host = 'https://owner-api.teslamotors.com',
-      String userAgent = 'Dart Tesla API client'})
-      : _host = host,
-        _userAgent = userAgent;
+  TeslaClient(HttpClient this.http,
+      {String this.host = 'https://owner-api.teslamotors.com',
+      String this.userAgent = 'Dart Tesla API client',
+      String this.token});
 
-  /// Gets oauth token.
-  ///
-  /// [email] and [password] are the same you'd use on tesla.com.
-  /// [id] and [secret] identify the client.
-  Future<AuthResponse> auth(
-          String email, String password, String id, String secret) async =>
+  Future<AuthResponse> auth(String email, String password, String clientId,
+          String clientSecret) async =>
       AuthResponse.fromJson(
-          await _perform(AuthRequest(email, password, id, secret)));
+          await call(Method.post, '/oauth/token', needsAuth: false, body: {
+        'grant_type': 'password',
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'email': email,
+        'password': password
+      }));
 
-  /// Gets the list of the vehicles tied to the account.
-  Future<List<Vehicle>> listVehicles() async {
-    final req = ListVehiclesRequest();
-    final res = await _http.getUrl(Uri.parse(_host + req.path)).then((r) {
-      r.headers.set(HttpHeaders.userAgentHeader, _userAgent);
-      r.headers.set(HttpHeaders.authorizationHeader, 'Bearer abc123');
-      r.headers.contentType =
-          ContentType("application", "json", charset: "utf-8");
-      return r.close();
-    });
-    final body =
-        await res.transform(utf8.decoder).reduce((acc, el) => acc + el);
-    return List.from(
-        json.decode(body)['response'].map((v) => Vehicle.fromJson(v)));
-  }
+  Future<List<Vehicle>> listVehicles() async => List.from(
+      ((await call(Method.get, '/api/1/vehicles'))['response'] as List)
+          .map((j) => Vehicle.fromJson(j)));
 
-  Future<Map<String, dynamic>> _perform(Request apiRequest) async {
-    final url = Uri.parse(_host + apiRequest.path);
-    final httpRequest = await (_http.postUrl(url));
-
-    final res = await _http.postUrl(url).then((r) {
-      r.headers.set(HttpHeaders.userAgentHeader, _userAgent);
-      r.headers.contentType =
-          ContentType("application", "json", charset: "utf-8");
-      r.write(json.encode(apiRequest.body));
-      return r.close();
-    });
-    return json.decode(
-        await res.transform(utf8.decoder).reduce((acc, el) => acc + el));
+  Future<Map<String, dynamic>> call(Method method, String path,
+      {Map<String, dynamic> body, bool needsAuth = true}) async {
+    final request = await method.open(http, Uri.parse(host + path));
+    request.headers.set(HttpHeaders.userAgentHeader, userAgent);
+    request.headers.contentType =
+        ContentType("application", "json", charset: "utf-8");
+    if (needsAuth) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
+    if (body != null) request.write(json.encode(body));
+    final response = await request.close();
+    final responseBody =
+        await response.transform(utf8.decoder).reduce((a, b) => a + b);
+    if (response.statusCode != HttpStatus.ok) {
+      final authHeaders = response.headers[HttpHeaders.wwwAuthenticateHeader];
+      if (authHeaders != null &&
+          authHeaders.isNotEmpty &&
+          authHeaders.any((header) => header.contains('error="invalid_token')))
+        throw InvalidTokenException();
+      throw TeslaClientException(
+          response.statusCode, response.headers, responseBody);
+    }
+    if (responseBody.isEmpty) return null;
+    return json.decode(responseBody);
   }
 }
